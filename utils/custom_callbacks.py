@@ -1,6 +1,8 @@
 import numpy as np
 import keras
 from keras.callbacks import Callback
+from keras import backend as K
+
 
 class LearningRateScheduler(Callback):
 
@@ -12,34 +14,37 @@ class LearningRateScheduler(Callback):
     def on_epoch_end(self, epoch, logs={}):
         lr = self.init_lr
         for i in range(0, len(self.schedule) - 1):
-            if epoch >= self.schedule[i][0] and epoch < self.schedule[i + 1][0]:
+            if self.schedule[i][0] <= epoch < self.schedule[i + 1][0]:
                 lr = self.schedule[i][1]
 
         if epoch >= self.schedule[-1][0]:
             lr = self.schedule[-1][1]
 
         print('Learning rate:{}'.format(lr))
-        #K.set_value(self.model.optimizer.lr, lr)
-        keras.backend.set_value(self.model.optimizer.lr, lr)
+
+        K.set_value(self.model.optimizer.lr, lr)
+
 
 class SavelModelScheduler(Callback):
 
-    def __init__(self, file_name='', schedule=[1, 25, 50, 75 , 100, 150]):
+    def __init__(self, file_name='', schedule=[1, 25, 50, 75, 100, 150]):
         super(Callback, self).__init__()
         self.schedule = schedule
         self.file_name = file_name
 
     def on_epoch_end(self, epoch, logs={}):
         if epoch in self.schedule:
-            model_name = self.file_name+'epoch{}'.format(epoch)
+            model_name = self.file_name + 'epoch{}'.format(epoch)
             print('Epoch %05d: saving model to %s' % (epoch, model_name))
             self.model.save_weights(model_name, overwrite=True)
             with open(model_name + '.json', 'w') as f:
                 f.write(self.model.to_json())
 
+
 def custom_stopping(value=0.5, verbose=0):
     early = keras.callbacks.EarlyStoppingByLossVal(monitor='val_loss', value=value, verbose=verbose)
     return early
+
 
 class EarlyStoppingByLossVal(keras.callbacks.Callback):
     def __init__(self, monitor='val_acc', value=0.95, verbose=0):
@@ -57,4 +62,3 @@ class EarlyStoppingByLossVal(keras.callbacks.Callback):
             if self.verbose > 0:
                 print("Epoch %05d: early stopping THR" % epoch)
             self.model.stop_training = True
-

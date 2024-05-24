@@ -31,20 +31,24 @@ def statistics(model):
           'Memory [{:.6f}]'.format(blocks, n_params, n_filters, flops, memory), flush=True)
 
 
-def prediction(model, X_test, y_test):
+def prediction(model, X_test, y_test, num_classes=None):
     y_pred = np.zeros((X_test.shape[0], y_test.shape[1]))
 
     for batch in gen_batches(X_test.shape[0], 256):  # 256 stands for the number of samples in primary memory
         samples = preprocess_input(X_test[batch].astype(float))
 
         # with tf.device("CPU"):
-        X_tmp = Dataset.from_tensor_slices((samples)).batch(256)
+        X_tmp = Dataset.from_tensor_slices(samples).batch(256)
 
         y_pred[batch] = model.predict(X_tmp, batch_size=256, verbose=0)
 
-    top1 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=1)
-    top5 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=5)
-    top10 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=10)
+    labels = None
+    if num_classes is not None:
+        labels = np.arrange(num_classes)
+
+    top1 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=1, labels=labels)
+    top5 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=5, labels=labels)
+    top10 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=10, labels=labels)
     print('Top1 [{:.4f}] Top5 [{:.4f}] Top10 [{:.4f}]'.format(top1, top5, top10), flush=True)
 
 
@@ -64,7 +68,7 @@ def finetuning(model, X_train, y_train, X_test, y_test):
             samples = func.data_augmentation(X_train[batch].astype(float), padding=28)
             samples = preprocess_input(samples)
 
-            #with tf.device("CPU"):
+            # with tf.device("CPU"):
             X_tmp = Dataset.from_tensor_slices((samples, y_train[batch])).shuffle(4 * 64).batch(64)
 
             model.fit(X_tmp,
@@ -73,7 +77,6 @@ def finetuning(model, X_train, y_train, X_test, y_test):
                       batch_size=64)
         if ep % 3:
             prediction(model, X_test, y_test)
-
 
         func.save_model('Criterion[{}]' + '_Blocks{}_P[{}]_Epoch{}'.format(criterion_layer, blocks, p_layer, ep), model)
 
@@ -87,7 +90,7 @@ if __name__ == '__main__':
     parser.add_argument('--architecture', type=str, default='ResNet50')
     parser.add_argument('--criterion_layer', type=str, default='random')
     parser.add_argument('--p_layer', type=float, default=1)
-    debug = True
+    debug = False
 
     args = parser.parse_args()
     architecture_name = args.architecture
@@ -100,6 +103,8 @@ if __name__ == '__main__':
 
     if debug == False:
         model = func.load_model(architecture_name, architecture_name)
+        num_classes = None
+        # absolute path :(
         tmp = h5py.File('E:/ImageNet/imageNet_images.h5', 'r')
         X_train, y_train = tmp['X_train'], tmp['y_train']
         X_test, y_test = tmp['X_test'], tmp['y_test']
@@ -108,11 +113,19 @@ if __name__ == '__main__':
     else:
         n_samples = 100
         resolution = 224
-        X_train = np.random.rand(n_samples, resolution, resolution, 3)#TODO:Ensure at least one sample per class
+        num_classes = 1000
+        X_train = np.random.rand(n_samples, resolution, resolution, 3)  # TODO:Ensure at least one sample per class
         X_test = np.random.rand(n_samples, resolution, resolution, 3)
 
         y_train = np.eye(1000)[np.random.randint(0, 1000, n_samples)]
         y_test = np.eye(1000)[np.random.randint(0, 1000, n_samples)]
+
+        input_shape = (224, 224, 3)
+        blocks = [3, 4, 6, 3]
+
+        model = arch.resnet(
+            input_shape=input_shape,
+            blocks=blocks)
 
     while rl.count_res_blocks(model) != [2, 2, 2, 2]:
         allowed_layers = rl.blocks_to_prune(model)
@@ -123,5 +136,5 @@ if __name__ == '__main__':
 
         # model = finetuning(model, X_train, y_train, X_test, y_test)
         statistics(model)
-        prediction(model, X_test, y_test)
+        prediction(model, X_test, y_test, num_classes)
         # func.save_model('Criterion[{}]' + '_Blocks{}_P[{}]'.format(criterion_layer, blocks, p_layer), model)

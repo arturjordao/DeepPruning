@@ -40,7 +40,7 @@ def prediction(model, X_test, y_test):
         samples = preprocess_input(X_test[batch].astype(float))
 
         # with tf.device("CPU"):
-        X_tmp = Dataset.from_tensor_slices((samples)).batch(256)
+        X_tmp = Dataset.from_tensor_slices(samples).batch(256)
 
         y_pred[batch] = model.predict(X_tmp, batch_size=256, verbose=0)
 
@@ -54,8 +54,9 @@ def finetuning(model, X_train, y_train, X_test, y_test, criterion_filter, p_filt
     lr = 0.001
     schedule = [(2, 1e-4), (4, 1e-5)]
 
-    #It checks if the code saves the model correctly
-    func.save_model('Criterion[{}]_Filters{}_P[{}]_Epoch{}'.format(criterion_filter, func.count_filters(model), p_filter, 0), model)
+    # It checks if the code saves the model correctly
+    func.save_model(
+        'Criterion[{}]_Filters{}_P[{}]_Epoch{}'.format(criterion_filter, func.count_filters(model), p_filter, 0), model)
 
     lr_scheduler = custom_callbacks.LearningRateScheduler(init_lr=lr, schedule=schedule)
     callbacks = [lr_scheduler]
@@ -77,8 +78,10 @@ def finetuning(model, X_train, y_train, X_test, y_test, criterion_filter, p_filt
         if ep % 3:
             prediction(model, X_test, y_test)
 
-        #if ep in [3, 5]:
-        func.save_model('Criterion[{}]_Filters[{}]_P[{}]_Epoch{}'.format(criterion_filter, func.count_filters(model), p_filter, ep), model)
+        # if ep in [3, 5]:
+        func.save_model(
+            'Criterion[{}]_Filters[{}]_P[{}]_Epoch{}'.format(criterion_filter, func.count_filters(model), p_filter, ep),
+            model)
 
     return model
 
@@ -104,11 +107,11 @@ if __name__ == '__main__':
 
     print('Architecture [{}] Criterion[{}] P[{}]'.format(architecture_name, criterion_filter, p_filter), flush=True)
 
-    model = func.load_model('Criterion[CKA]_Blocks[2, 2, 2, 2]_P[1]_Epoch5',
-                            'Criterion[CKA]_Blocks[2, 2, 2, 2]_P[1]_Epoch5')
+    # don't have those files
+    # model = func.load_model('Criterion[CKA]_Blocks[2, 2, 2, 2]_P[1]_Epoch5',
+    #                         'Criterion[CKA]_Blocks[2, 2, 2, 2]_P[1]_Epoch5')
 
-
-    if debug == False:
+    if not debug:
         tmp = h5py.File('E:/ImageNet/imageNet_images.h5', 'r')
         X_train, y_train = tmp['X_train'], tmp['y_train']
         X_test, y_test = tmp['X_test'], tmp['y_test']
@@ -117,15 +120,15 @@ if __name__ == '__main__':
     else:
         n_samples = 100
         resolution = 224
-        X_train = np.random.rand(n_samples, resolution, resolution, 3)#TODO:Ensure at least one sample per class
+        X_train = np.random.rand(n_samples, resolution, resolution, 3)  # TODO:Ensure at least one sample per class
         X_test = np.random.rand(n_samples, resolution, resolution, 3)
 
         y_train = np.eye(1000)[np.random.randint(0, 1000, n_samples)]
         y_test = np.eye(1000)[np.random.randint(0, 1000, n_samples)]
 
-        #model = arch.resnet(input_shape=(resolution, resolution, 3), blocks=blocks) #Scale-wise
+        # model = arch.resnet(input_shape=(resolution, resolution, 3), blocks=blocks) #Scale-wise
 
-    #prediction(model, X_test, y_test)
+    # prediction(model, X_test, y_test)
     while True:
         allowed_layers_filters = rf.layer_to_prune_filters(model)
         filter_method = cf.criteria(criterion_filter)
@@ -135,5 +138,6 @@ if __name__ == '__main__':
 
         # model = finetuning(model, X_train, y_train, X_test, y_test, criterion_filter, p_filter)
         statistics(model)
-        #prediction(model, X_test, y_test)
-        func.save_model('Criterion[{}]_Filters[{}]_P[{}]'.format(criterion_filter, func.count_filters(model), p_filter), model)
+        # prediction(model, X_test, y_test)
+        func.save_model('Criterion[{}]_Filters[{}]_P[{}]'.format(criterion_filter, func.count_filters(model), p_filter),
+                        model)

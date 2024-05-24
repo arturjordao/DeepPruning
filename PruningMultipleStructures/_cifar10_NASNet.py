@@ -60,12 +60,14 @@ from keras.applications.imagenet_utils import decode_predictions
 from keras import backend as K
 
 import sys
+
 sys.path.insert(0, '../utils')
 
 import custom_functions as func
 
 _BN_DECAY = 0.9997
 _BN_EPSILON = 1e-3
+
 
 def NASNet(input_shape=None,
            penultimate_filters=4032,
@@ -171,14 +173,14 @@ def NASNet(input_shape=None,
 
     if K.image_data_format() != 'channels_last':
         print('The NASNet family of models is only available '
-                      'for the input data format "channels_last" '
-                      '(width, height, channels). '
-                      'However your settings specify the default '
-                      'data format "channels_first" (channels, width, height).'
-                      ' You should set `image_data_format="channels_last"` '
-                      'in your Keras config located at ~/.keras/keras.json. '
-                      'The model being returned right now will expect inputs '
-                      'to follow the "channels_last" data format.')
+              'for the input data format "channels_last" '
+              '(width, height, channels). '
+              'However your settings specify the default '
+              'data format "channels_first" (channels, width, height).'
+              ' You should set `image_data_format="channels_last"` '
+              'in your Keras config located at ~/.keras/keras.json. '
+              'The model being returned right now will expect inputs '
+              'to follow the "channels_last" data format.')
         K.set_image_data_format('channels_last')
         old_data_format = 'channels_first'
     else:
@@ -228,7 +230,8 @@ def NASNet(input_shape=None,
         if use_auxiliary_branch:
             auxiliary_x = _add_auxiliary_head(x, classes, weight_decay, pooling, include_top)
 
-    x, p0 = _reduction_A(x, p, filters * filters_multiplier ** 2, weight_decay, id='reduce_%d' % (nb_blocks[0]+nb_blocks[1]))
+    x, p0 = _reduction_A(x, p, filters * filters_multiplier ** 2, weight_decay,
+                         id='reduce_%d' % (nb_blocks[0] + nb_blocks[1]))
 
     if initial_reduction:  # CIFAR mode
         if use_auxiliary_branch:
@@ -237,7 +240,8 @@ def NASNet(input_shape=None,
     p = p0 if not skip_reduction_layer_input else p
 
     for i in range(nb_blocks[2]):
-        x, p = _normal_A(x, p, filters * filters_multiplier ** 2, weight_decay, id='%d' % (nb_blocks[0]+nb_blocks[1] + i + 1))
+        x, p = _normal_A(x, p, filters * filters_multiplier ** 2, weight_decay,
+                         id='%d' % (nb_blocks[0] + nb_blocks[1] + i + 1))
 
     x = Activation('relu')(x)
 
@@ -311,6 +315,7 @@ def NASNet(input_shape=None,
         K.set_image_data_format(old_data_format)
 
     return model
+
 
 def NASNetCIFAR(input_shape=(32, 32, 3),
                 dropout=0.0,
@@ -607,16 +612,16 @@ def _add_auxiliary_head(x, classes, weight_decay, pooling, include_top):
         auxiliary_x = Activation('relu')(x)
         auxiliary_x = AveragePooling2D((5, 5), strides=(3, 3), padding='valid', name='aux_pool')(auxiliary_x)
         auxiliary_x = Conv2D(128, (1, 1), padding='same', use_bias=False, name='aux_conv_projection',
-                            kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay))(auxiliary_x)
+                             kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay))(auxiliary_x)
         auxiliary_x = BatchNormalization(axis=channel_axis, momentum=_BN_DECAY, epsilon=_BN_EPSILON,
-                                        name='aux_bn_projection')(auxiliary_x)
+                                         name='aux_bn_projection')(auxiliary_x)
         auxiliary_x = Activation('relu')(auxiliary_x)
 
         auxiliary_x = Conv2D(768, (auxiliary_x.shape[img_height], auxiliary_x.shape[img_width]),
-                            padding='valid', use_bias=False, kernel_initializer='he_normal',
-                            kernel_regularizer=l2(weight_decay), name='aux_conv_reduction')(auxiliary_x)
+                             padding='valid', use_bias=False, kernel_initializer='he_normal',
+                             kernel_regularizer=l2(weight_decay), name='aux_conv_reduction')(auxiliary_x)
         auxiliary_x = BatchNormalization(axis=channel_axis, momentum=_BN_DECAY, epsilon=_BN_EPSILON,
-                                        name='aux_bn_reduction')(auxiliary_x)
+                                         name='aux_bn_reduction')(auxiliary_x)
         auxiliary_x = Activation('relu')(auxiliary_x)
 
         if include_top:
@@ -630,33 +635,36 @@ def _add_auxiliary_head(x, classes, weight_decay, pooling, include_top):
                 auxiliary_x = GlobalMaxPooling2D()(auxiliary_x)
 
     return auxiliary_x
+
+
 #################################################################################################################
 
 def random_idx(model, blocks, p_layers=0.1):
     num_blocks = blocks
     allowed_layers = concat_to_prune(model)
     n_layers = len(allowed_layers)
-    num_remove = int(p_layers*n_layers)
+    num_remove = int(p_layers * n_layers)
     mask = np.ones(len(allowed_layers))
     score_block = idx_score_block(model, allowed_layers)
 
-    scores = np.arange(len(allowed_layers))*1.0
+    scores = np.arange(len(allowed_layers)) * 1.0
     np.random.shuffle(scores)
 
     for i in range(0, num_remove):
         min_vip = np.argmin(scores)
         block_idx = allowed_layers[min_vip]
         block_idx = score_block[block_idx]
-        if num_blocks[block_idx]-1 > 1:
+        if num_blocks[block_idx] - 1 > 1:
             mask[min_vip] = 0
             num_blocks[block_idx] = num_blocks[block_idx] - 1
         else:
             print('Warning: It does not possible to remove more layer from block [{}]'.format(block_idx))
 
-        scores[min_vip] = np.inf #Removes the minimum VIP from the list
-        #print('Removing Concat [{}]'.format(allowed_layers[min_vip]), flush=True)
+        scores[min_vip] = np.inf  # Removes the minimum VIP from the list
+        # print('Removing Concat [{}]'.format(allowed_layers[min_vip]), flush=True)
 
     return num_blocks, mask
+
 
 def statistics(model):
     n_params = model.count_params()
@@ -668,6 +676,7 @@ def statistics(model):
     print('Blocks {} Number of Parameters [{}] Number of Filters [{}] FLOPS [{}] '
           'Memory [{:.6f}]'.format(blocks, n_params, n_filters, flops, memory), flush=True)
 
+
 def concat_to_prune(model):
     allowed_layers = []
     all_concat = []
@@ -676,14 +685,13 @@ def concat_to_prune(model):
         if model.get_layer(index=i).name.__contains__('normal_concat_'):
             all_concat.append(i)
 
-    #The first tow concat cannot be removed
-    #We can start removing from adjust_conv_projection_2
+    # The first tow concat cannot be removed
+    # We can start removing from adjust_conv_projection_2
     all_concat.pop(0)
     all_concat.pop(0)
-
 
     for i in range(0, len(all_concat)):
-        name = model.get_layer(index=all_concat[i]+3).name
+        name = model.get_layer(index=all_concat[i] + 3).name
         if not name.__contains__('reduction_conv'):
 
             name = model.get_layer(index=all_concat[i] - 42).name
@@ -698,16 +706,18 @@ def concat_to_prune(model):
     # allowed_layers.append(all_concat[-1])
     return allowed_layers
 
+
 def print_debug(model):
     for i in range(0, len(model.layers)):
         print('Index [{}] {} {}'.format(i, model.get_layer(index=i).name, model.get_layer(index=i).output_shape))
+
 
 def reduce_layers(model):
     allowed_layers = []
 
     for i in range(0, len(model.layers)):
         if model.get_layer(index=i).name.__contains__('reduction_conv_1_reduce'):
-            allowed_layers.append(np.arange(i-45, i+47))
+            allowed_layers.append(np.arange(i - 45, i + 47))
 
         if model.get_layer(index=i).name.__contains__('reduction_add3_reduce_'):
             allowed_layers.append(np.arange(i, i + 54))
@@ -721,15 +731,16 @@ def reduce_layers(model):
 
         if model.get_layer(index=i).name.__contains__('normal_concat_'):
             if model.get_layer(index=i).output_shape == (None, 8, 8, 768):
-                if model.get_layer(index=i-44).output_shape == (None, 8, 8, 512):
-                    allowed_layers.append(np.arange(i-42, i+1))
+                if model.get_layer(index=i - 44).output_shape == (None, 8, 8, 512):
+                    allowed_layers.append(np.arange(i - 42, i + 1))
 
     allowed_layers = [item for sublist in allowed_layers for item in sublist]
     return allowed_layers
 
+
 def transfer_weights(model, new_model, mask):
-    #TODO: tem que copiar todos os pesos ate chegar em adjust_conv_projection_2
-    #So a partir de adjust_conv_projection_2 eh que os blocos podem ser removidos
+    # TODO: tem que copiar todos os pesos ate chegar em adjust_conv_projection_2
+    # So a partir de adjust_conv_projection_2 eh que os blocos podem ser removidos
 
     assigned_weights = np.zeros((len(new_model.layers)), dtype=bool)
     for i in range(0, 88):
@@ -737,65 +748,63 @@ def transfer_weights(model, new_model, mask):
         new_model.get_layer(index=i).set_weights(w)
         assigned_weights[i] = True
 
-    #These are the reduce layers
-    #Here it is necessary match by name and index -- Keras problems
+    # These are the reduce layers
+    # Here it is necessary match by name and index -- Keras problems
     idx_model = reduce_layers(model)
     idx_new_model = reduce_layers(new_model)
 
     lname_model = []
     for i in idx_model:
         name = model.get_layer(index=i).name.rstrip(string.digits)
-        shape = str(model.get_layer(index=i).output_shape)+str(model.get_layer(index=i).input_shape)
-        lname_model.append(name+shape)#This ID avoid conflicts between blocks
+        shape = str(model.get_layer(index=i).output_shape) + str(model.get_layer(index=i).input_shape)
+        lname_model.append(name + shape)  # This ID avoid conflicts between blocks
         # E.g., reduction_conv_1_reduce_ from block 1 and 2
 
     lname_new_model = []
     for i in idx_new_model:
         name = new_model.get_layer(index=i).name.rstrip(string.digits)
-        shape = str(new_model.get_layer(index=i).output_shape)+str(new_model.get_layer(index=i).input_shape)
-        lname_new_model.append(name+shape) #This ID avoid conflicts between blocks
+        shape = str(new_model.get_layer(index=i).output_shape) + str(new_model.get_layer(index=i).input_shape)
+        lname_new_model.append(name + shape)  # This ID avoid conflicts between blocks
         # E.g., reduction_conv_1_reduce_ from block 1 and 2
-
 
     for transfer_idx in range(0, len(idx_new_model)):
         name_id = lname_new_model[transfer_idx]
 
         if name_id in lname_model:
-            #print('{} {}'.format(idx_model[lname_model.index(name_id)], idx_new_model[transfer_idx]))
+            # print('{} {}'.format(idx_model[lname_model.index(name_id)], idx_new_model[transfer_idx]))
             w = model.get_layer(index=idx_model[lname_model.index(name_id)]).get_weights()
             new_model.get_layer(index=idx_new_model[transfer_idx]).set_weights(w)
             assigned_weights[idx_new_model[transfer_idx]] = True
 
-            #A = model.get_layer(index=idx_model[lname_model.index(name_id)]).name
-            #B = new_model.get_layer(index=idx_new_model[transfer_idx]).name
-            #print('{}            {}'.format(A, B))
+            # A = model.get_layer(index=idx_model[lname_model.index(name_id)]).name
+            # B = new_model.get_layer(index=idx_new_model[transfer_idx]).name
+            # print('{}            {}'.format(A, B))
 
-            #Once the layer provide weights we need to remove it from list
-            #To avoid that it provides weights twice (due to same input/output shape)
-            lname_model[lname_model.index(name_id)] = ''#We cannot use pop() function
+            # Once the layer provide weights we need to remove it from list
+            # To avoid that it provides weights twice (due to same input/output shape)
+            lname_model[lname_model.index(name_id)] = ''  # We cannot use pop() function
 
     # These are the layers where the weights must to be transfered
     concat_model = concat_to_prune(model)
     concat_new_model = concat_to_prune(new_model)
 
-    concat_model = np.array(concat_model)[mask==1]
+    concat_model = np.array(concat_model)[mask == 1]
     concat_model = list(concat_model)
     end = len(concat_new_model)
 
     for layer_idx in range(0, end):
 
-        idx_model = np.arange(concat_model[0] - 42, concat_model[0]+1).tolist()
-        idx_new_model = np.arange(concat_new_model[0] - 42, concat_new_model[0]+1).tolist()
+        idx_model = np.arange(concat_model[0] - 42, concat_model[0] + 1).tolist()
+        idx_new_model = np.arange(concat_new_model[0] - 42, concat_new_model[0] + 1).tolist()
 
         for transfer_idx in range(0, len(idx_model)):
             w = model.get_layer(index=idx_model[transfer_idx]).get_weights()
             new_model.get_layer(index=idx_new_model[transfer_idx]).set_weights(w)
             assigned_weights[idx_new_model[transfer_idx]] = True
 
-            #A = model.get_layer(index=idx_model[transfer_idx]).name
-            #B = new_model.get_layer(index=idx_new_model[transfer_idx]).name
-            #print('{}            {}'.format(A, B))
-
+            # A = model.get_layer(index=idx_model[transfer_idx]).name
+            # B = new_model.get_layer(index=idx_new_model[transfer_idx]).name
+            # print('{}            {}'.format(A, B))
 
         concat_new_model.pop(0)
         concat_model.pop(0)
@@ -807,17 +816,20 @@ def transfer_weights(model, new_model, mask):
 
     for i in range(0, len(assigned_weights)):
         if assigned_weights[i] == False:
-            if not isinstance(new_model.get_layer(index=i), Activation) and not isinstance(new_model.get_layer(index=i), Add):
-                if not isinstance(new_model.get_layer(index=i), GlobalAveragePooling2D) and not isinstance(new_model.get_layer(index=i), Dropout):
+            if not isinstance(new_model.get_layer(index=i), Activation) and not isinstance(new_model.get_layer(index=i),
+                                                                                           Add):
+                if not isinstance(new_model.get_layer(index=i), GlobalAveragePooling2D) and not isinstance(
+                        new_model.get_layer(index=i), Dropout):
                     if not isinstance(new_model.get_layer(index=i), Concatenate):
                         print('Weights from Layer[{}] were not transferred'.format(i))
 
     return new_model
 
+
 def idx_score_block(model, layers):
-    #Associates the layer index with the NASNet block
+    # Associates the layer index with the NASNet block
     output = {}
-    shapes = [32, 16, 8]#Shapes of blocks 0, 1, 2
+    shapes = [32, 16, 8]  # Shapes of blocks 0, 1, 2
 
     for i in range(0, len(layers)):
         shape = model.get_layer(index=layers[i]).output_shape[1]
@@ -825,6 +837,7 @@ def idx_score_block(model, layers):
         output[layers[i]] = idx
 
     return output
+
 
 def count_nas_blocks(model):
     concat_layers = []
@@ -842,6 +855,7 @@ def count_nas_blocks(model):
         blocks[idx] = blocks[idx] + 1
 
     return blocks
+
 
 def finetuning(model, X_train, y_train, X_test, y_test):
     lr = 0.01
@@ -862,39 +876,40 @@ def finetuning(model, X_train, y_train, X_test, y_test):
              func.data_augmentation(X_train),
              func.data_augmentation(X_train)))
 
-        #with tf.device("CPU"):
+        # with tf.device("CPU"):
         X_tmp = Dataset.from_tensor_slices((X_tmp, y_tmp)).shuffle(4 * 128).batch(128)
 
         model.fit(X_tmp, batch_size=128,
                   callbacks=callbacks, verbose=2,
                   epochs=ep, initial_epoch=ep - 1)
 
-        if ep % 5 == 0: # % 5
+        if ep % 5 == 0:  # % 5
             acc = accuracy_score(np.argmax(y_test, axis=1), np.argmax(model.predict(X_test, verbose=0), axis=1))
             print('Accuracy [{:.4f}]'.format(acc), flush=True)
 
     return model
+
 
 if __name__ == '__main__':
     np.random.seed(12227)
 
     p = 0.4
 
-    depth = 241 #ResNet types: 32, 56, 110
-    architecture_name = 'NASNet{}'.format(depth) #'ResNet56', 'ResNet110',
+    depth = 241  # ResNet types: 32, 56, 110
+    architecture_name = 'NASNet{}'.format(depth)  # 'ResNet56', 'ResNet110',
 
     method = 'PLS+VIP'  # PLS+VIP, infFS, ilFS
     n_components = 2
 
-    print('Architecture [{}] Method[{}] #Components[{}] Pruned[{}]'.format(architecture_name, method, n_components, p), flush=True)
+    print('Architecture [{}] Method[{}] #Components[{}] Pruned[{}]'.format(architecture_name, method, n_components, p),
+          flush=True)
 
     lr = 0.01
     schedule = [(100, 1e-3), (150, 1e-4)]
 
-
     model = func.load_model(architecture_file='../architectures/CIFAR10/{}'.format(architecture_name),
                             weights_file='G:/Meu Drive/Projects/weights/CIFAR10/{}++'.format(architecture_name))
-    #model = NASNetCIFAR((32, 32, 3), depth_block=[6, 6, 6], classes=10)
+    # model = NASNetCIFAR((32, 32, 3), depth_block=[6, 6, 6], classes=10)
     X_train, y_train, X_test, y_test = func.cifar_resnet_data(debug=False)
     acc = accuracy_score(np.argmax(y_test, axis=1), np.argmax(model.predict(X_test), axis=1))
     print('Accuracy [{:.4f}]'.format(acc), flush=True)
@@ -904,7 +919,6 @@ if __name__ == '__main__':
     # allowed_layers = concat_to_prune(model)
 
     for i in range(0, 50):
-
         blocks, mask = random_idx(model, count_nas_blocks(model), p)
         tmp_model = NASNetCIFAR((32, 32, 3), depth_block=blocks, classes=10)
         model = transfer_weights(model, tmp_model, mask)
@@ -913,11 +927,11 @@ if __name__ == '__main__':
         acc = accuracy_score(np.argmax(y_test, axis=1), np.argmax(model.predict(X_test), axis=1))
         print('Accuracy [{:.4f}]'.format(acc), flush=True)
 
-        #model = fine_tuning(model)
+        # model = fine_tuning(model)
 
         statistics(model)
         y_pred = model.predict(X_test)
         acc = accuracy_score(np.argmax(y_test, axis=1), np.argmax(y_pred, axis=1))
         print('Accuracy [{:.4f}]'.format(acc), flush=True)
 
-        #func.save_model('CIFAR10/'+architecture_name + '_' + method + '_Blocks{}_p[{}]_c[{}]'.format(blocks, p, n_components), model)
+        # func.save_model('CIFAR10/'+architecture_name + '_' + method + '_Blocks{}_p[{}]_c[{}]'.format(blocks, p, n_components), model)
