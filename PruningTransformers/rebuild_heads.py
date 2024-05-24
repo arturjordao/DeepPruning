@@ -1,7 +1,8 @@
 import numpy as np
 import copy
-from tensorflow.keras import layers
+from keras import layers
 import template_architectures
+
 
 def heads_to_prune(model):
     output = []
@@ -12,13 +13,15 @@ def heads_to_prune(model):
 
     return output
 
+
 def rw_multi_head(w, idx):
     w_new = copy.deepcopy(w)
     for i in range(0, 6):
-        w_new[i] = np.delete(w_new[i], idx, axis=1) if i%2 == 0 else np.delete(w_new[i], idx, axis=0)
+        w_new[i] = np.delete(w_new[i], idx, axis=1) if i % 2 == 0 else np.delete(w_new[i], idx, axis=0)
 
     w_new[-2] = np.delete(w_new[-2], idx, axis=0)
     return w_new
+
 
 def unimportant_heads(scores, p):
     output = []
@@ -38,24 +41,24 @@ def unimportant_heads(scores, p):
         if num_heads == 1:
             tmp = []
         else:
-            num_remove = min(num_remove, num_heads-1)
+            num_remove = min(num_remove, num_heads - 1)
             tmp = np.argpartition(scores[i], num_remove)[:num_remove]
 
         output.append((layers[i], tmp))
 
     return output
 
-def rebuild_network(model, scores, p):
 
+def rebuild_network(model, scores, p):
     input_shape = model.input_shape[1:]
     projection_dim = [layer._key_dim for layer in model.layers if isinstance(layer, layers.MultiHeadAttention)][0]
     n_classes = model.get_layer(index=-1).output_shape[-1]
 
-    #According to the scores, this function selects the head to be eliminated
+    # According to the scores, this function selects the head to be eliminated
     layer_heads = unimportant_heads(copy.deepcopy(scores), p)
 
-    #Avoids empty multiheads (its says 0 heads) - Begin
-    num_heads = [l._num_heads for l in model.layers if isinstance(l, layers.MultiHeadAttention)]
+    # Avoids empty multiheads (its says 0 heads) - Begin
+    num_heads = [layer._num_heads for layer in model.layers if isinstance(layer, layers.MultiHeadAttention)]
     layer_heads.sort(key=lambda tup: tup[0])  # Ensures that pop(ith) corresponds to ith (attention) layer
     num_heads_new = [x[0] - len(x[1][1]) for x in zip(num_heads, layer_heads)]
 
@@ -65,15 +68,15 @@ def rebuild_network(model, scores, p):
             num_heads_new[i] = num_heads[i]
     # End
 
-    if len(model.input.shape.as_list()) == 3: #Tabular
+    if len(model.input.shape.as_list()) == 3:  # Tabular
         pruned_model = template_architectures.TransformerTabular(input_shape, projection_dim, num_heads_new, n_classes)
     else:
         pruned_model = template_architectures.Transformer(input_shape, projection_dim, num_heads_new, n_classes)
 
     remove_head = [item[1] for item in layer_heads]
 
-    #After we build the model, we assign the weighs to multihead layers
-    #Currently, tf+keras does not enable we assing weights during layer creation
+    # After we build the model, we assign the weighs to multihead layers
+    # Currently, tf+keras does not enable we assing weights during layer creation
     for i, layer in enumerate(model.layers):
         if isinstance(layer, layers.MultiHeadAttention):
             w = layer.get_weights()

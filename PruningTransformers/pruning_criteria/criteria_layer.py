@@ -2,20 +2,25 @@ import numpy as np
 from numpy.linalg import matrix_rank
 import copy
 import time
-from tensorflow.keras.layers import *
-from tensorflow.keras.models import Model
+from keras.layers import *
+from keras.models import Model
 from sklearn.utils import gen_batches
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.utils.extmath import softmax
 import gc
 
-class CKA():
+
+class CKA:
     __name__ = 'CKA'
+
     def __init__(self):
         pass
 
-    def _debiased_dot_product_similarity_helper(self, xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x, squared_norm_y, n):
-        return ( xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / ((n - 1) * (n - 2)))
+    @staticmethod
+    def _debiased_dot_product_similarity_helper(xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x,
+                                                squared_norm_y, n):
+        return (xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / (
+                    (n - 1) * (n - 2)))
 
     def feature_space_linear_cka(self, features_x, features_y, debiased=False):
         features_x = features_x - np.mean(features_x, 0, keepdims=True)
@@ -45,29 +50,30 @@ class CKA():
 
         return dot_product_similarity / (normalization_x * normalization_y)
 
-    def scores(self, model, X_train=None, y_train=None, allowed_layers=[], n_samples=None):
+    def scores(self, model, x_train=None, y_train=None, allowed_layers=[], n_samples=None):
         scores = []
 
         if n_samples is not None:
             y_ = np.argmax(y_train, axis=1)
-            sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in np.unique(y_)]
+            sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in
+                            np.unique(y_)]
             sub_sampling = np.array(sub_sampling).reshape(-1)
         else:
-            sub_sampling = np.arange(X_train.shape[0])
+            sub_sampling = np.arange(x_train.shape[0])
 
-        F = Model(model.input, model.get_layer(index=-2).output)#Flatten
-        features_F = F.predict(X_train[sub_sampling], verbose=0)
+        F = Model(model.input, model.get_layer(index=-2).output)  # Flatten
+        features_F = F.predict(x_train[sub_sampling], verbose=0)
 
         for layer_idx in allowed_layers:
 
             idx_dense_and_multihead = []
 
-            #Given a layer_normalization (allowed_layers), we need to find
-            #the first and second add layers and zeroed-out the dense and multi head attention
+            # Given a layer_normalization (allowed_layers), we need to find
+            # the first and second add layers and zeroed-out the dense and multi head attention
             i = layer_idx
             while len(idx_dense_and_multihead) < 2:
                 if isinstance(model.get_layer(index=i), Add):
-                    idx_dense_and_multihead.append(i-1)
+                    idx_dense_and_multihead.append(i - 1)
                 i = i + 1
 
             multi_head = model.get_layer(index=idx_dense_and_multihead[0])
@@ -85,7 +91,7 @@ class CKA():
                 w2[i] = np.zeros(w2[i].shape)
 
             F_line = Model(model.input, model.get_layer(index=-2).output)
-            features_line = F_line.predict(X_train, verbose=0)
+            features_line = F_line.predict(x_train, verbose=0)
 
             model.get_layer(index=idx_dense_and_multihead[0]).set_weights(original_w1)
             model.get_layer(index=idx_dense_and_multihead[1]).set_weights(original_w2)
@@ -95,16 +101,19 @@ class CKA():
 
         return scores
 
-class random():
-    def __init__(self,):
+
+class Random:
+    def __init__(self, ):
         pass
 
-    def scores(self,  model, X_train=None, y_train=None, allowed_layers=[]):
+    @staticmethod
+    def scores(model, X_train=None, y_train=None, allowed_layers=[]):
         output = [(x, np.random.rand()) for x in allowed_layers]
         return output
 
+
 def criteria(method='random'):
-    n_components =2
+    n_components = 2
     # if method == 'PLS+VIP':
     #     return PLSVIP(n_components, preprocess_input)
     #
@@ -121,7 +130,7 @@ def criteria(method='random'):
     #     return klDivergence()
 
     if method == 'random':
-        return random()
+        return Random()
 
     if method == 'CKA':
         return CKA()

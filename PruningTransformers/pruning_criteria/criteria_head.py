@@ -1,8 +1,8 @@
 import numpy as np
 import copy
 import time
-from tensorflow.keras.layers import *
-from tensorflow.keras.models import Model
+from keras.layers import *
+from keras.models import Model
 import os.path
 import sys
 
@@ -12,14 +12,18 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.utils.extmath import softmax
 from sklearn.utils import gen_batches
 
-class CKA():
+
+class CKA:
     __name__ = 'CKA'
 
     def __init__(self):
         pass
 
-    def _debiased_dot_product_similarity_helper(self, xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x, squared_norm_y, n):
-        return ( xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / ((n - 1) * (n - 2)))
+    @staticmethod
+    def _debiased_dot_product_similarity_helper(xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x,
+                                                squared_norm_y, n):
+        return (xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / (
+                    (n - 1) * (n - 2)))
 
     def feature_space_linear_cka(self, features_x, features_y, debiased=False):
         features_x = features_x - np.mean(features_x, 0, keepdims=True)
@@ -49,33 +53,33 @@ class CKA():
 
         return dot_product_similarity / (normalization_x * normalization_y)
 
-    def scores(self, model, X_train=None, y_train=None, allowed_layers=[], n_samples=None):
+    def scores(self, model, x_train=None, y_train=None, allowed_layers=[], n_samples=None):
         output = []
 
         if n_samples is not None:
             y_ = np.argmax(y_train, axis=1)
-            sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in np.unique(y_)]
+            sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in
+                            np.unique(y_)]
             sub_sampling = np.array(sub_sampling).reshape(-1)
         else:
-            sub_sampling = np.arange(X_train.shape[0])
+            sub_sampling = np.arange(x_train.shape[0])
 
         F = Model(model.input, model.get_layer(index=-2).output)
-        F_features = F.predict(X_train[sub_sampling], verbose=0)
+        F_features = F.predict(x_train[sub_sampling], verbose=0)
 
-        idx_Head = 0
         for i in range(len(allowed_layers)):
             scores = []
 
-            layer = model.get_layer(index = allowed_layers[i])
+            layer = model.get_layer(index=allowed_layers[i])
 
             n_heads = layer._num_heads
             for h in range(n_heads):
                 weights = layer.get_weights()
                 original_weights = copy.deepcopy(weights)
 
-                #Zeroed-out process for transformer-like architecture
+                # Zeroed-out process for transformer-like architecture
                 for k in range(0, 6):
-                    if k%2 == 0:
+                    if k % 2 == 0:
                         weights[k][:, h, :] = 0
                     else:
                         weights[k][h, :] = 0
@@ -85,24 +89,26 @@ class CKA():
                 layer.set_weights(weights)
 
                 F_line = Model(model.input, model.get_layer(index=-2).output)
-                F_line_features = F_line.predict(X_train[sub_sampling], verbose=0)
+                F_line_features = F_line.predict(x_train[sub_sampling], verbose=0)
 
                 layer.set_weights(original_weights)
 
                 score = self.feature_space_linear_cka(F_features, F_line_features)
-                scores.append(1-score)
+                scores.append(1 - score)
 
             output.append((allowed_layers[i], scores))
 
         return output
 
-class random():
+
+class Random:
     __name__ = 'Random Pruning'
 
     def __init__(self):
         pass
 
-    def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
+    @staticmethod
+    def scores(model, x_train=None, y_train=None, allowed_layers=[]):
         output = []
 
         for idx in allowed_layers:
@@ -111,6 +117,7 @@ class random():
             output.append((idx, scores))
 
         return output
+
 
 def criteria(method):
     # if method == 'L1':
@@ -138,7 +145,7 @@ def criteria(method):
     #     return expectedABS(model=model, percentage_discard=p)
     #
     if method == 'random':
-        return random()
+        return Random()
 
     if method == 'CKA':
         return CKA()

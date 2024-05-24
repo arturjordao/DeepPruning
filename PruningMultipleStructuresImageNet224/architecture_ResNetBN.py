@@ -1,10 +1,12 @@
-#https://github.com/keras-team/keras-applications/blob/master/keras_applications/resnet_common.py
+# https://github.com/keras-team/keras-applications/blob/master/keras_applications/resnet_common.py
 from keras import backend
 from keras import layers
 from keras import models
 import keras.utils as keras_utils
 from keras.layers import *
-#from keras.applications.imagenet_utils import _obtain_input_shape
+
+
+# from keras.applications.imagenet_utils import _obtain_input_shape
 
 def block1(x, filters, kernel_size=3, stride=1,
            conv_shortcut=True, name=None):
@@ -51,6 +53,7 @@ def block1(x, filters, kernel_size=3, stride=1,
     x = layers.Activation('relu', name=name + '_out')(x)
     return x
 
+
 def resnet(input_shape=(224, 224, 3), blocks=None, num_classes=1000):
     stacks = len(blocks)
     num_filters = 64
@@ -61,7 +64,7 @@ def resnet(input_shape=(224, 224, 3), blocks=None, num_classes=1000):
     x = Conv2D(num_filters, 7, strides=2, use_bias=True, name='conv1_conv')(x)
 
     x = BatchNormalization(axis=bn_axis, epsilon=1.001e-5,
-                                  name='conv1_bn')(x)
+                           name='conv1_bn')(x)
     x = Activation('relu', name='conv1_relu')(x)
 
     x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)), name='pool1_pad')(x)
@@ -69,15 +72,15 @@ def resnet(input_shape=(224, 224, 3), blocks=None, num_classes=1000):
 
     for stage in range(0, stacks):
         num_res_blocks = blocks[stage]
-        name = 'conv'+str(stage+2)
+        name = 'conv' + str(stage + 2)
         if stage == 0:
             stride = 1
         else:
             stride = 2
-        x = block1(x, filters=num_filters, stride=stride, name=name+'_block1')
+        x = block1(x, filters=num_filters, stride=stride, name=name + '_block1')
 
-        for res_block in range(2, num_res_blocks+1):
-            x = block1(x, num_filters, conv_shortcut=False, name=name+'_block'+str(res_block))
+        for res_block in range(2, num_res_blocks + 1):
+            x = block1(x, num_filters, conv_shortcut=False, name=name + '_block' + str(res_block))
 
         num_filters = num_filters * 2
 
@@ -88,13 +91,23 @@ def resnet(input_shape=(224, 224, 3), blocks=None, num_classes=1000):
     model = models.Model(inputs, x, name='ResNetBN')
     return model
 
+
 if __name__ == '__main__':
+    import numpy as np
+    import sys
+    import h5py
+
+    sys.path.insert(0, '../utils')
+
+    import custom_functions as func
+    from tensorflow.keras.applications.resnet50 import preprocess_input
+    from sklearn.utils import gen_batches
+    from sklearn.metrics import accuracy_score
+
     np.random.seed(12227)
 
     input_shape = (224, 224, 3)
     num_classes = 1000
-
-
 
     blocks = [3, 4, 6, 3]
     # x = stack1(x, 64, 3, stride1=1, name='conv2')
@@ -104,15 +117,9 @@ if __name__ == '__main__':
     model = resnet(input_shape=input_shape,
                    blocks=blocks,
                    num_classes=num_classes)
-    model.load_weights('E:/Projects/weights/resnet_common/resnet50_weights_tf_dim_ordering_tf_kernels.h5')
 
-    import sys
-    import h5py
-    sys.path.insert(0, '../utils')
-    import custom_functions as func
-    from keras.applications.resnet50 import preprocess_input
-    from sklearn.utils import gen_batches
-    from sklearn.metrics.classification import accuracy_score
+    # Absolute paths :(
+    model.load_weights('E:/Projects/weights/resnet_common/resnet50_weights_tf_dim_ordering_tf_kernels.h5')
     tmp = h5py.File('E:/datasets/ImageNet/processed_data/imageNet_images.h5', 'r')
 
     X_test, y_test = tmp['X_test'], tmp['y_test']
