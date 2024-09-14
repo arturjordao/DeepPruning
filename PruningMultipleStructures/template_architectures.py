@@ -1,12 +1,17 @@
+import sys
+
+import keras.backend as K
+import keras.backend as backend
 import tensorflow as tf
-from tensorflow.keras.layers import *
-from tensorflow.keras.regularizers import l2
-from tensorflow.keras.models import Model
-import tensorflow.keras.utils as keras_utils
-import tensorflow.keras.backend as backend
-import tensorflow.keras.backend as K
-from tensorflow.keras import layers
-import numpy as np
+from keras import layers
+from keras.layers import *
+from keras.models import Model
+from keras.regularizers import l2
+
+sys.path.insert(0, '../utils')
+
+from custom_classes import Patches, PatchEncoder
+
 
 def resnet_layer(inputs,
                  num_filters=16,
@@ -16,7 +21,6 @@ def resnet_layer(inputs,
                  batch_normalization=True,
                  conv_first=True,
                  name=''):
-
     conv = Conv2D(num_filters,
                   kernel_size=kernel_size,
                   strides=strides,
@@ -42,7 +46,7 @@ def resnet_layer(inputs,
 
 
 def ResNet(input_shape, depth_block, filters=[],
-                 iter=0, num_classes=10):
+           iter=0, num_classes=10):
     num_filters = 16
     i = 0
     inputs = Input(shape=input_shape)
@@ -52,19 +56,19 @@ def ResNet(input_shape, depth_block, filters=[],
     for stack in range(3):
         num_res_blocks = depth_block[stack]
         for res_block in range(num_res_blocks):
-            layer_name = str(stack)+'_'+str(res_block)+'_'+str(iter)
+            layer_name = str(stack) + '_' + str(res_block) + '_' + str(iter)
             strides = 1
             if stack > 0 and res_block == 0:  # first layer but not first stack
                 strides = 2  # downsample
             y = resnet_layer(inputs=x,
                              num_filters=filters.pop(0),
                              strides=strides,
-                             name=layer_name+'_1')
+                             name=layer_name + '_1')
             i = i + 1
             y = resnet_layer(inputs=y,
                              num_filters=filters.pop(0),
                              activation=None,
-                             name=layer_name+'_2')
+                             name=layer_name + '_2')
             i = i + 1
             if stack > 0 and res_block == 0:  # first layer but not first stack
                 # linear projection residual shortcut connection to match
@@ -75,7 +79,7 @@ def ResNet(input_shape, depth_block, filters=[],
                                  strides=strides,
                                  activation=None,
                                  batch_normalization=False,
-                                 name=layer_name+'_3')
+                                 name=layer_name + '_3')
                 i = i + 1
             x = Add()([x, y])
             x = Activation('relu')(x)
@@ -93,8 +97,10 @@ def ResNet(input_shape, depth_block, filters=[],
     model = Model(inputs=inputs, outputs=outputs)
     return model
 
+
 def relu6(x):
     return K.relu(x, max_value=6)
+
 
 def _obtain_input_shape(input_shape,
                         default_size,
@@ -134,10 +140,10 @@ def _obtain_input_shape(input_shape,
                     raise ValueError('The input must have 3 channels; got '
                                      '`input_shape=' + str(input_shape) + '`')
                 if ((input_shape[1] is not None and input_shape[1] < min_size) or
-                   (input_shape[2] is not None and input_shape[2] < min_size)):
+                        (input_shape[2] is not None and input_shape[2] < min_size)):
                     raise ValueError('Input size must be at least ' +
                                      str(min_size) + 'x' + str(min_size) + ', got '
-                                     '`input_shape=' + str(input_shape) + '`')
+                                                                           '`input_shape=' + str(input_shape) + '`')
             else:
                 input_shape = (3, None, None)
         else:
@@ -148,13 +154,14 @@ def _obtain_input_shape(input_shape,
                     raise ValueError('The input must have 3 channels; got '
                                      '`input_shape=' + str(input_shape) + '`')
                 if ((input_shape[0] is not None and input_shape[0] < min_size) or
-                   (input_shape[1] is not None and input_shape[1] < min_size)):
+                        (input_shape[1] is not None and input_shape[1] < min_size)):
                     raise ValueError('Input size must be at least ' +
                                      str(min_size) + 'x' + str(min_size) + ', got '
-                                     '`input_shape=' + str(input_shape) + '`')
+                                                                           '`input_shape=' + str(input_shape) + '`')
             else:
                 input_shape = (None, None, 3)
     return input_shape
+
 
 def correct_pad(backend, inputs, kernel_size):
     """Returns a tuple for zero-padding for 2D convolution with downsampling.
@@ -180,6 +187,7 @@ def correct_pad(backend, inputs, kernel_size):
     return ((correct[0] - adjust[0], correct[0]),
             (correct[1] - adjust[1], correct[1]))
 
+
 def _make_divisible(v, divisor, min_value=None):
     if min_value is None:
         min_value = divisor
@@ -189,12 +197,13 @@ def _make_divisible(v, divisor, min_value=None):
         new_v += divisor
     return new_v
 
+
 def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
     channel_axis = 1 if backend.image_data_format() == 'channels_first' else -1
 
     in_channels = backend.int_shape(inputs)[channel_axis]
-    pointwise_conv_filters = filters[0]#int(filters * alpha)
-    pointwise_filters = filters[1]#_make_divisible(pointwise_conv_filters, 8)
+    # pointwise_conv_filters = filters[0]  # int(filters * alpha)
+    pointwise_filters = filters[1]  # _make_divisible(pointwise_conv_filters, 8)
     x = inputs
     prefix = 'block_{}_'.format(block_id)
 
@@ -210,7 +219,7 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
                                       epsilon=1e-3,
                                       momentum=0.999,
                                       name=prefix + 'expand_BN')(x)
-        #x = ReLU(6., name=prefix + 'expand_relu')(x)
+        # x = ReLU(6., name=prefix + 'expand_relu')(x)
         x = Activation(relu6, name=prefix + 'expand_relu')(x)
     else:
         prefix = 'expanded_conv_'
@@ -220,17 +229,17 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
         x = layers.ZeroPadding2D(padding=correct_pad(backend, x, 3),
                                  name=prefix + 'pad')(x)
     x = DepthwiseConv2D(kernel_size=3,
-                               strides=stride,
-                               activation=None,
-                               use_bias=False,
-                               padding='same' if stride == 1 else 'valid',
-                               name=prefix + 'depthwise')(x)
+                        strides=stride,
+                        activation=None,
+                        use_bias=False,
+                        padding='same' if stride == 1 else 'valid',
+                        name=prefix + 'depthwise')(x)
     x = layers.BatchNormalization(axis=channel_axis,
                                   epsilon=1e-3,
                                   momentum=0.999,
                                   name=prefix + 'depthwise_BN')(x)
 
-    #x = ReLU(6., name=prefix + 'depthwise_relu')(x)
+    # x = ReLU(6., name=prefix + 'depthwise_relu')(x)
     x = Activation(relu6, name=prefix + 'depthwise_relu')(x)
     # Project
     x = layers.Conv2D(filters[1],
@@ -248,6 +257,7 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
         return layers.Add(name=prefix + 'add')([inputs, x])
     return x
 
+
 def MobileNetV2(input_shape=None,
                 alpha=1.0,
                 include_top=True,
@@ -257,9 +267,8 @@ def MobileNetV2(input_shape=None,
                 num_classes=1000,
                 initial_reduction=False,
                 depth_block=[2, 3, 4, 3, 3],
-                filters = [],
+                filters=[],
                 **kwargs):
-
     # If input_shape is not None, assume default size
 
     if backend.image_data_format() == 'channels_first':
@@ -269,10 +278,10 @@ def MobileNetV2(input_shape=None,
         rows = input_shape[0]
         cols = input_shape[1]
 
-    if rows == cols and rows in [96, 128, 160, 192, 224]:
-        default_size = rows
-    else:
-        default_size = 224
+    # if rows == cols and rows in [96, 128, 160, 192, 224]:
+    #    default_size = rows
+    # else:
+    #    default_size = 224
 
     if backend.image_data_format() == 'channels_last':
         row_axis, col_axis = (0, 1)
@@ -281,14 +290,13 @@ def MobileNetV2(input_shape=None,
     rows = input_shape[row_axis]
     cols = input_shape[col_axis]
 
-
     img_input = layers.Input(shape=input_shape)
 
     channel_axis = 1 if backend.image_data_format() == 'channels_first' else -1
 
     if initial_reduction:
         print('TODO: We need to check this part -- initial_reduction')
-        first_block_filters = filters.pop(0)#_make_divisible(32 * alpha, 8)
+        first_block_filters = filters.pop(0)  # _make_divisible(32 * alpha, 8)
         x = layers.ZeroPadding2D(padding=correct_pad(backend, img_input, 3),
                                  name='Conv1_pad')(img_input)
         x = layers.Conv2D(first_block_filters,
@@ -301,7 +309,7 @@ def MobileNetV2(input_shape=None,
                                       epsilon=1e-3,
                                       momentum=0.999,
                                       name='bn_Conv1')(x)
-        #x = ReLU(6., name='Conv1_relu')(x)
+        # x = ReLU(6., name='Conv1_relu')(x)
         x = Activation(relu6, name='Conv1_relu')(x)
     else:
         x = img_input
@@ -316,7 +324,7 @@ def MobileNetV2(input_shape=None,
         n_filters = filters_block[stage]
 
         for block in range(0, num_blocks):
-            if block == 0 and n_filters != 96: #First block of the stage
+            if block == 0 and n_filters != 96:  # First block of the stage
                 x = _inverted_res_block(x, filters=[filters.pop(0), filters.pop(0)], alpha=alpha, stride=2,
                                         expansion=6, block_id=id)
             else:
@@ -354,76 +362,20 @@ def MobileNetV2(input_shape=None,
 
     return model
 
-class Patches(layers.Layer):
-    def __init__(self, patch_size, **kwargs):
-        super(Patches, self).__init__()
-        self.patch_size = patch_size
-
-    def call(self, images):
-        batch_size = tf.shape(images)[0]
-        patches = tf.image.extract_patches(
-            images=images,
-            sizes=[1, self.patch_size, self.patch_size, 1],
-            strides=[1, self.patch_size, self.patch_size, 1],
-            rates=[1, 1, 1, 1],
-            padding="VALID",
-        )
-        patch_dims = patches.shape[-1]
-        patches = tf.reshape(patches, [batch_size, -1, patch_dims])
-        return patches
-
-    def get_config(self):
-
-        config = super().get_config().copy()
-        config.update({
-            'patch_size':self.patch_size,
-        })
-        return config
-
-class PatchEncoder(layers.Layer):
-    def __init__(self, num_patches, projection_dim, **kwargs):
-        super(PatchEncoder, self).__init__()
-        self.num_patches = num_patches
-        self.projection_dim = projection_dim
-
-        self.projection = layers.Dense(units=self.projection_dim)
-
-        # if weights is not None:
-        #     self.projection = layers.Dense(units=projection_dim, weights=weights)
-
-        self.position_embedding = layers.Embedding(
-            input_dim=num_patches,
-            output_dim=self.projection_dim
-        )
-
-    def call(self, patch):
-        positions = tf.range(start=0, limit=self.num_patches, delta=1)
-        encoded = self.projection(patch) + self.position_embedding(positions)
-        return encoded
-
-    def get_config(self):
-
-        config = super().get_config().copy()
-        config.update({
-            'num_patches': self.num_patches,
-            'projection_dim': self.projection_dim
-        })
-        return config
 
 def Transformer(input_shape, projection_dim, num_heads, n_classes):
-
     inputs = layers.Input(shape=input_shape)
     patches = Patches(4)(inputs)
     encoded_patches = PatchEncoder((32 // 4) ** 2, projection_dim)(patches)
 
     num_transformer_blocks = len(num_heads)
     for i in range(num_transformer_blocks):
-
         # Layer normalization 1.
         x1 = layers.LayerNormalization(epsilon=1e-6)(encoded_patches)
 
         # Create a multi-head attention layer.
-        attention_output = layers.MultiHeadAttention(num_heads=num_heads[i], key_dim=projection_dim, dropout=0.0)(x1, x1)
+        attention_output = layers.MultiHeadAttention(num_heads=num_heads[i], key_dim=projection_dim, dropout=0.0)(x1,
+                                                                                                                  x1)
 
         # Skip connection 1.
         x2 = layers.Add()([attention_output, encoded_patches])
@@ -432,15 +384,14 @@ def Transformer(input_shape, projection_dim, num_heads, n_classes):
         x3 = layers.LayerNormalization(epsilon=1e-6)(x2)
 
         # MLP Size of the transformer layers
-        transformer_units = [projection_dim * 2, projection_dim]
+        # transformer_units = [projection_dim * 2, projection_dim]
 
-        #x3 = FFN(x3, hidden_units=transformer_units)
+        # x3 = FFN(x3, hidden_units=transformer_units)
         x3 = layers.Dense(projection_dim * 2, activation=tf.nn.gelu)(x3)
         x3 = layers.Dense(projection_dim, activation=tf.nn.gelu)(x3)
 
         # Skip connection 2.
         encoded_patches = layers.Add()([x3, x2])
-
 
     encoded_patches = layers.Flatten()(encoded_patches)
     if n_classes == 2:
@@ -448,5 +399,5 @@ def Transformer(input_shape, projection_dim, num_heads, n_classes):
     else:
         outputs = layers.Dense(n_classes, activation='softmax')(encoded_patches)
 
-    #return keras.Model(inputs, outputs)
+    # return keras.Model(inputs, outputs)
     return Model(inputs, outputs)

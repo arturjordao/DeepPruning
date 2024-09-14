@@ -1,6 +1,8 @@
-import numpy as np
 import copy
+
+import numpy as np
 from keras import layers
+
 import template_architectures
 
 
@@ -29,7 +31,6 @@ def unimportant_heads(scores, p):
     scores = [x[1] for x in scores]
 
     for i in range(len(layers)):
-        tmp = []
         if isinstance(p, float):
             num_remove = round(p * len(scores[i]))
         else:

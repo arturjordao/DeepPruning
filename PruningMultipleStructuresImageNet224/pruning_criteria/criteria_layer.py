@@ -1,16 +1,15 @@
-import numpy as np
-from numpy.linalg import matrix_rank
 import copy
-import time
-from tensorflow.keras.layers import *
-from tensorflow.keras.models import Model
+
+import numpy as np
+from keras.layers import *
+from keras.models import Model
+from numpy.linalg import matrix_rank
 from sklearn.utils import gen_batches
-from sklearn.cross_decomposition import PLSRegression
 from sklearn.utils.extmath import softmax
-import gc
 
 n_samples = None
 preprocess_input = None
+
 
 def feature_extraction(model, X):
     features = np.zeros((X.shape[0], model.output_shape[-1]))
@@ -21,13 +20,17 @@ def feature_extraction(model, X):
 
     return features
 
-class CKA():
+
+class CKA:
     __name__ = 'CKA'
+
     def __init__(self):
         pass
 
-    def _debiased_dot_product_similarity_helper(self, xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x, squared_norm_y, n):
-        return ( xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / ((n - 1) * (n - 2)))
+    def _debiased_dot_product_similarity_helper(self, xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x,
+                                                squared_norm_y, n):
+        return (xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / (
+                (n - 1) * (n - 2)))
 
     def feature_space_linear_cka(self, features_x, features_y, debiased=False):
         features_x = features_x - np.mean(features_x, 0, keepdims=True)
@@ -57,7 +60,7 @@ class CKA():
 
         return dot_product_similarity / (normalization_x * normalization_y)
 
-    def scores(self,  model, X_train=None, y_train=None, allowed_layers=[]):
+    def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
         output = []
 
         if n_samples:
@@ -65,17 +68,19 @@ class CKA():
             sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in
                             np.unique(y_)]
             sub_sampling = np.array(sub_sampling).reshape(-1)
-            sub_sampling = np.sort(sub_sampling)# It avois erro when acessing the .h5 file
-            #TypeError: Indexing elements must be in increasing order
+            sub_sampling = np.sort(sub_sampling)  # It avois erro when acessing the .h5 file
+            # TypeError: Indexing elements must be in increasing order
         else:  # It uses the full training data
             sub_sampling = np.arange(X_train.shape[0])
 
         F = Model(model.input, model.get_layer(index=-2).output)
-        features_F = feature_extraction(F, X_train[sub_sampling])#F.predict(X_train[sub_sampling], verbose=0)
+        features_F = feature_extraction(F, X_train[sub_sampling])  # F.predict(X_train[sub_sampling], verbose=0)
 
         F_line = Model(model.input, model.get_layer(index=-2).output)
         for layer_idx in allowed_layers:
             # Resblock: Conv, Batch, Activation, Conv, Batch, Activation, Conv, Batch, Add
+            # if isinstance(model.get_layer(index=layer_idx + self.layer_offset), BatchNormalization):
+            # _layer = model.get_layer(index=layer_idx - 1)
             _layer = F_line.get_layer(index=layer_idx - 1)
             _w = _layer.get_weights()
             _w_original = copy.deepcopy(_w)
@@ -84,7 +89,8 @@ class CKA():
                 _w[i] = np.zeros(_w[i].shape)
 
             _layer.set_weights(_w)
-            features_line = feature_extraction(F_line, X_train[sub_sampling]) #F_line.predict(X_train[sub_sampling], verbose=0)
+            features_line = feature_extraction(F_line, X_train[
+                sub_sampling])  # F_line.predict(X_train[sub_sampling], verbose=0)
 
             _layer.set_weights(_w_original)
 
@@ -93,13 +99,14 @@ class CKA():
 
         return output
 
-class rank():
+
+class rank:
     __name__ = 'HRank: Filter Pruning using High-Rank Feature Map, CVPR 2020'
 
     def __init__(self):
         pass
 
-    def scores(self,  model, X_train=None, y_train=None, allowed_layers=[]):
+    def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
         output = []
         for layer_idx in allowed_layers:
 
@@ -112,26 +119,28 @@ class rank():
             scores = np.zeros((n_filters))
 
             for batch in gen_batches(n_samples, 32):
-                #if self.preprocess_input is not None:
-                 #   samples = self.preprocess_input(X_train[batch].astype(float))
-                  #  features = tmp_model.predict(samples, batch_size=32)
-                #else:
+                # if self.preprocess_input is not None:
+                #   samples = self.preprocess_input(X_train[batch].astype(float))
+                #  features = tmp_model.predict(samples, batch_size=32)
+                # else:
                 features = tmp_model.predict(X_train[batch], batch_size=32, verbose=0)
 
                 for filter in range(0, n_filters):
                     for feat in features:
                         scores[filter] += matrix_rank(feat[:, :, filter])
 
-            scores = scores/X_train.shape[0]
-            #We need to normalize by the size of the feature map (32x32) (16x16) (8, 8)
-            scores = scores/max(w, h)
-            #print('Layer [{}] Score[{:.4f}]'.format(i, np.mean(scores)), flush=True)
-            output.append((layer_idx,np.mean(scores)))
+            scores = scores / X_train.shape[0]
+            # We need to normalize by the size of the feature map (32x32) (16x16) (8, 8)
+            scores = scores / max(w, h)
+            # print('Layer [{}] Score[{:.4f}]'.format(i, np.mean(scores)), flush=True)
+            output.append((layer_idx, np.mean(scores)))
 
         return output
 
-class klDivergence():
+
+class klDivergence:
     __name__ = 'Neural Network Pruning with Residual-Connections and Limited-Data, CVPR 2020'
+
     # Code adapted from https://github.com/Roll920/CURL
 
     def __init__(self):
@@ -139,7 +148,7 @@ class klDivergence():
 
     def bn_idx(self, model, layer_idx):
         idx = -1
-        #Looking for the closest relu activatin
+        # Looking for the closest relu activatin
         for i in range(layer_idx, len(model.layers)):
             layer = model.get_layer(index=i)
             if isinstance(layer, BatchNormalization):
@@ -166,7 +175,7 @@ class klDivergence():
     def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
         output = []
 
-       #n_samples = 256 Original Paper
+        # n_samples = 256 Original Paper
         if n_samples:
             y_ = np.argmax(y_train, axis=1)
             sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in
@@ -180,9 +189,8 @@ class klDivergence():
         unchaged_weights = model.get_weights()
 
         for layer_idx in allowed_layers:
-
-            #'Removes' the layers. The weights are updated by reference
-            self.zeroed_out(model, layer_idx-1)#i=Add i-1 is the batch index
+            # 'Removes' the layers. The weights are updated by reference
+            self.zeroed_out(model, layer_idx - 1)  # i=Add i-1 is the batch index
 
             # y_pred = np.zeros((X_small_indices.shape[0], y_train.shape[1]))
             # for batch in gen_batches(X_small_indices.shape[0], 32):
@@ -198,12 +206,13 @@ class klDivergence():
             # Restore the original weights (unpruned)
             model.set_weights(unchaged_weights)
 
-            #print('Layer [{}] Score[{:.4f}]'.format(i, np.mean(kl_loss)), flush=True)
+            # print('Layer [{}] Score[{:.4f}]'.format(i, np.mean(kl_loss)), flush=True)
             output.append((layer_idx, kl_loss))
 
         return output
 
-class expectedABS():
+
+class expectedABS:
     __name__ = 'DropNet: Reducing Neural Network Complexity via Iterative Pruning John, ICML 2020'
 
     def __init__(self):
@@ -222,41 +231,44 @@ class expectedABS():
             scores = np.zeros((n_filters))
 
             for batch in gen_batches(n_samples, 32):
-                #if self.preprocess_input is not None:
-                 #   samples = self.preprocess_input(X_train[batch].astype(float))
-                 #   features = tmp_model.predict(samples, batch_size=32)
-                #else:
+                # if self.preprocess_input is not None:
+                #   samples = self.preprocess_input(X_train[batch].astype(float))
+                #   features = tmp_model.predict(samples, batch_size=32)
+                # else:
                 features = tmp_model.predict(X_train[batch], batch_size=32, verbose=False)
 
                 for filter in range(0, n_filters):
                     for feat in features:
                         scores[filter] += np.sum(np.abs(feat[:, :, filter]))
 
-            scores = scores/(w*h*X_train.shape[0])
-            #print('Layer [{}] Score[{:.4f}]'.format(i, np.mean(scores)), flush=True)
+            scores = scores / (w * h * X_train.shape[0])
+            # print('Layer [{}] Score[{:.4f}]'.format(i, np.mean(scores)), flush=True)
             output.append((layer_idx, np.mean(scores)))
 
         return output
 
-class random():
+
+class random:
     def __init__(self):
         pass
 
-    def scores(self,  model, X_train=None, y_train=None, allowed_layers=[]):
+    def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
         output = [(x, np.random.rand()) for x in allowed_layers]
 
         return output
 
-class template_SimilarityMetric():
+
+class template_SimilarityMetric:
     __name__ = 'Template for implementing similarity metric criteria'
+
     def __init__(self):
         pass
 
     def metric(self, X, X_line):
-        euclidian = np.linalg.norm(X-X_line, axis=1)
+        euclidian = np.linalg.norm(X - X_line, axis=1)
         return np.sum(euclidian)
 
-    def scores(self,  model, X_train=None, y_train=None, allowed_layers=[]):
+    def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
         output = []
 
         # n_samples = 256 Original Paper
@@ -291,8 +303,8 @@ class template_SimilarityMetric():
 
         return output
 
-def criteria(method='random'):
 
+def criteria(method='random'):
     if method == 'rank':
         return rank()
 

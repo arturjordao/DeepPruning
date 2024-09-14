@@ -1,21 +1,17 @@
-import numpy as np
-import copy
-from sklearn.metrics._classification import accuracy_score
-import sys
-from keras.layers import *
-import keras.backend as K
-from keras.activations import *
 import argparse
-import gc
-import rebuild_layers as rl
+
+import numpy as np
+from keras.activations import *
+from sklearn.metrics._classification import accuracy_score
+
 import rebuild_filters as rf
+import rebuild_layers as rl
 from pruning_criteria import criteria_filter as cf
 from pruning_criteria import criteria_layer as cl
-import template_architectures
 
 sys.path.insert(0, '../utils')
 import custom_functions as func
-import custom_callbacks
+
 
 def statistics(model):
     n_params = model.count_params()
@@ -27,12 +23,13 @@ def statistics(model):
     print('Blocks {} Number of Parameters [{}] Number of Filters [{}] FLOPS [{}] '
           'Memory [{:.6f}]'.format(blocks, n_params, n_filters, flops, memory), flush=True)
 
+
 if __name__ == '__main__':
     np.random.seed(2)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--architecture_name', type=str, default='ResNet56')
-    parser.add_argument('--criterion_filter', type=str,default='random')
+    parser.add_argument('--criterion_filter', type=str, default='random')
     parser.add_argument('--criterion_layer', type=str, default='random')
     parser.add_argument('--p_filter', type=float, default=0.1)
     parser.add_argument('--p_layer', type=int, default=1)
@@ -60,7 +57,7 @@ if __name__ == '__main__':
 
     for i in range(0, 15):
 
-        # #Filter
+        # Filter
         allowed_layers_filters = rf.layer_to_prune_filters(model)
         filter_method = cf.criteria(criterion_filter)
         scores = filter_method.scores(model, X_train, y_train, allowed_layers_filters)
@@ -71,7 +68,6 @@ if __name__ == '__main__':
         scores = layer_method.scores(model, X_train, y_train, allowed_layers)
         pruned_model_layer = rl.rebuild_network(model, scores, p_layer)
 
-
         prob = np.random.rand(1)[0]
         if prob >= 0.5:
             model = pruned_model_layer
@@ -80,6 +76,6 @@ if __name__ == '__main__':
             model = pruned_model_filter
             structure = 'Filter'
 
-        acc = accuracy_score(np.argmax(y_test, axis=1), np.argmax(model.predict(X_test,verbose=0), axis=1))
+        acc = accuracy_score(np.argmax(y_test, axis=1), np.argmax(model.predict(X_test, verbose=0), axis=1))
         statistics(model)
         print('Iteration [{}] Structure [{}] Accuracy [{}]'.format(i, structure, acc))

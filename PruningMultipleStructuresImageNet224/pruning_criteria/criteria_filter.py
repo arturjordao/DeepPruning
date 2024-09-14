@@ -1,28 +1,26 @@
-import numpy as np
 import copy
-import time
-from tensorflow.keras.layers import *
-from tensorflow.keras.models import Model
-import os.path
-import sys
 
+import numpy as np
+from keras.layers import *
+from keras.models import Model
 from numpy.linalg import matrix_rank
-from sklearn.cross_decomposition import PLSRegression
-from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.utils.extmath import softmax
 from sklearn.utils import gen_batches
+from sklearn.utils.extmath import softmax
 
-#architecture_name = 'ResNet'
+# architecture_name = 'ResNet'
 n_samples = None
 
-class CKA():
+
+class CKA:
     __name__ = 'CKA'
 
     def __init__(self):
         pass
 
-    def _debiased_dot_product_similarity_helper(self, xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x, squared_norm_y, n):
-        return ( xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / ((n - 1) * (n - 2)))
+    def _debiased_dot_product_similarity_helper(self, xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x,
+                                                squared_norm_y, n):
+        return (xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / (
+                (n - 1) * (n - 2)))
 
     def feature_space_linear_cka(self, features_x, features_y, debiased=False):
         features_x = features_x - np.mean(features_x, 0, keepdims=True)
@@ -57,9 +55,10 @@ class CKA():
 
         if n_samples:
             y_ = np.argmax(y_train, axis=1)
-            sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in np.unique(y_)]
+            sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in
+                            np.unique(y_)]
             sub_sampling = np.array(sub_sampling).reshape(-1)
-        else:#It uses the full training data
+        else:  # It uses the full training data
             sub_sampling = np.arange(X_train.shape[0])
 
         F = Model(model.input, model.get_layer(index=-2).output)
@@ -69,7 +68,7 @@ class CKA():
         for layer_idx in allowed_layers:
             scores = []
 
-            layer = F_line.get_layer(index = layer_idx)
+            layer = F_line.get_layer(index=layer_idx)
             n_filters = layer.filters
             for f in range(n_filters):
                 weights = layer.get_weights()
@@ -79,27 +78,29 @@ class CKA():
                 weights[1][f] = 0
                 layer.set_weights(weights)
 
-                #F_line = Model(model.input, model.get_layer(index=-2).output)
+                # F_line = Model(model.input, model.get_layer(index=-2).output)
                 F_line_features = F_line.predict(X_train[sub_sampling], verbose=0)
 
                 layer.set_weights(original_weights)
 
                 score = self.feature_space_linear_cka(F_features, F_line_features)
-                scores.append(1-score)
+                scores.append(1 - score)
 
             output.append((layer_idx, scores))
 
         return output
 
-class L1():
+
+class L1:
     __name__ = 'Pruning Filters for Efficient ConvNets'
 
     def __init__(self):
         pass
 
     def compute_l1(self, weights):
-        filter_w, filter_h, n_channels, n_filters =  weights[0].shape[0],  weights[0].shape[1], weights[0].shape[2], weights[0].shape[3]
-        l1 = np.zeros((n_filters))
+        filter_w, filter_h, n_channels, n_filters = weights[0].shape[0], weights[0].shape[1], weights[0].shape[2], \
+            weights[0].shape[3]
+        l1 = np.zeros(n_filters)
         for channel in range(0, n_channels):
             for filter in range(0, n_filters):
                 kernel = weights[0][:, :, channel, filter]
@@ -112,20 +113,20 @@ class L1():
 
         idx_Conv2D = 0
         for layer_idx in allowed_layers:
-
             layer = model.get_layer(index=layer_idx)
 
-            weights = layer.get_weights()# weights have the format: w,h, channel, filters
+            weights = layer.get_weights()  # weights have the format: w,h, channel, filters
             score = self.compute_l1(weights)
 
             output.append((layer_idx, score))
 
         return output
 
-class random():
+
+class random:
     __name__ = 'Random Pruning'
 
-    def __init__(self,):
+    def __init__(self, ):
         pass
 
     def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
@@ -138,7 +139,8 @@ class random():
 
         return output
 
-class rank():
+
+class rank:
     __name__ = 'HRank: Filter Pruning using High-Rank Feature Map, CVPR 2020'
 
     def __init__(self):
@@ -146,23 +148,23 @@ class rank():
 
     def relu_idx(self, model, layer_idx):
         idx = -1
-        #Looking for the closest relu activatin
+        # Looking for the closest relu activatin
         for i in range(layer_idx, len(model.layers)):
             layer = model.get_layer(index=i)
             if isinstance(layer, Activation):
                 idx = i
                 break
 
-        #The activation in VGG16 is inside Conv2D
+        # The activation in VGG16 is inside Conv2D
         if idx == -1:
-           idx = layer_idx
+            idx = layer_idx
 
         return idx
 
     def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
         output = []
 
-        #n_samples = 500
+        # n_samples = 500
         if n_samples:
             y_ = np.argmax(y_train, axis=1)
             sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in
@@ -174,21 +176,23 @@ class rank():
         for layer_idx in allowed_layers:
 
             idx = self.relu_idx(model, layer_idx)
-            feature_maps = Model(model.input, model.get_layer(index=idx).output).predict(X_train[sub_sampling], batch_size=32, verbose=False)
+            feature_maps = Model(model.input, model.get_layer(index=idx).output).predict(X_train[sub_sampling],
+                                                                                         batch_size=32, verbose=False)
             n_filters = feature_maps.shape[-1]
-            ranking = np.zeros((n_filters))
+            ranking = np.zeros(n_filters)
 
             for sample in feature_maps:
                 for filter in range(0, n_filters):
                     ranking[filter] = ranking[filter] + matrix_rank(sample[:, :, filter])
 
-            ranking = ranking/feature_maps.shape[0]
+            ranking = ranking / feature_maps.shape[0]
 
             output.append((layer_idx, ranking))
 
         return output
 
-class klDivergence():
+
+class klDivergence:
     __name__ = 'Neural Network Pruning with Residual-Connections and Limited-Data'
 
     def __init__(self):
@@ -196,7 +200,7 @@ class klDivergence():
 
     def bn_idx(self, model, layer_idx):
         idx = -1
-        #Looking for the closest relu activatin
+        # Looking for the closest relu activatin
         for i in range(layer_idx, len(model.layers)):
             layer = model.get_layer(index=i)
             if isinstance(layer, BatchNormalization):
@@ -209,16 +213,16 @@ class klDivergence():
         layer = model.get_layer(index=layer_idx)
         w = layer.get_weights()
 
-        # Zeroed out the conv2d filter
+        # Zeroed out the Conv2d filter
         w[0][:, :, :, filter_idx] = np.zeros(w[0].shape[0:-1])
         w[1][filter_idx] = 0
         layer.set_weights(w)
 
-        #Find the index of the BN layer based on layer_idx
+        # Find the index of the BN layer based on layer_idx
         layer_idx = self.bn_idx(model, layer_idx)
         layer = model.get_layer(index=layer_idx)
 
-        #VGG16 on ImageNet224x224 does not contain BN layers.
+        # VGG16 on ImageNet224x224 does not contain BN layers.
         if isinstance(layer, BatchNormalization):
             # Zeroed out the batch norm filter
             w = layer.get_weights()
@@ -233,7 +237,7 @@ class klDivergence():
     def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
         output = []
 
-        #n_samples = 256 # Original paper subsample is 256
+        # n_samples = 256 # Original paper subsample is 256
         if n_samples:
             y_ = np.argmax(y_train, axis=1)
             sub_sampling = [np.random.choice(np.where(y_ == value)[0], n_samples, replace=False) for value in
@@ -249,9 +253,9 @@ class klDivergence():
 
             layer = model.get_layer(index=layer_idx)
 
-            scores = np.zeros((layer.filters))
+            scores = np.zeros(layer.filters)
             for filter_idx in range(0, layer.filters):
-                self.zeroed_out(model, layer_idx, filter_idx) #The weights are updated by reference
+                self.zeroed_out(model, layer_idx, filter_idx)  # The weights are updated by reference
                 q = softmax(model.predict(X_train[sub_sampling], verbose=False))
 
                 # Compute KL Divergence -- See generate_mask.py line 129
@@ -260,31 +264,32 @@ class klDivergence():
                 kl_loss = np.mean(kl_loss)
                 scores[filter_idx] = kl_loss
 
-                #Restore the original weights (unpruned)
+                # Restore the original weights (unpruned)
                 model.set_weights(unchaged_weights)
 
             output.append((layer_idx, scores))
 
         return output
 
-class expectedABS():
+
+class expectedABS:
     __name__ = 'DropNet: Reducing Neural Network Complexity via Iterative Pruning. ICML, 2020'
 
     def __init__(self):
-       pass
+        pass
 
     def relu_idx(self, model, layer_idx):
         idx = -1
-        #Looking for the closest relu activatin
+        # Looking for the closest relu activatin
         for i in range(layer_idx, len(model.layers)):
             layer = model.get_layer(index=i)
             if isinstance(layer, Activation):
                 idx = i
                 break
 
-        #The activation in VGG16 is inside Conv2D
+        # The activation in VGG16 is inside Conv2D
         if idx == -1:
-           idx = layer_idx
+            idx = layer_idx
 
         return idx
 
@@ -293,29 +298,30 @@ class expectedABS():
 
         for layer_idx in allowed_layers:
 
-            layer = model.get_layer(index=layer_idx)
+            # layer = model.get_layer(index=layer_idx)
 
             idx = self.relu_idx(model, layer_idx)
             extractor = Model(model.input, model.get_layer(index=idx).output)
             w, h, n_filters = model.get_layer(index=idx).output_shape[1:]
-            expected_abs_value = np.zeros((n_filters))
+            expected_abs_value = np.zeros(n_filters)
 
-            #Memory efficiency
+            # Memory efficiency
             for batch in gen_batches(X_train.shape[0], 512):
                 feature_maps = extractor.predict(X_train[batch], batch_size=32, verbose=False)
                 for filter in range(0, n_filters):
                     expected_abs_value[filter] += np.sum(np.abs(feature_maps[:, :, :, filter]))
 
-            score = expected_abs_value/(w*h*X_train.shape[0])
+            score = expected_abs_value / (w * h * X_train.shape[0])
 
             output.append((layer_idx, score))
 
         return output
 
-class template():
+
+class template:
     __name__ = 'Template for implementing a novel criterion'
 
-    def __init__(self,):
+    def __init__(self, ):
         pass
 
     def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
@@ -324,7 +330,7 @@ class template():
         for idx in allowed_layers:
             num_filters = model.get_layer(index=idx).filters
             scores = []
-            for filter in num_filters:
+            for _ in num_filters:
                 print('Do something')
                 scores.append(1)
 
@@ -332,14 +338,15 @@ class template():
 
         return output
 
-class template_SimilarityMetric():
+
+class template_SimilarityMetric:
     __name__ = 'Template for implementing similarity metric criteria'
 
-    def __init__(self,):
+    def __init__(self, ):
         pass
 
     def metric(self, X, X_line):
-        euclidian = np.linalg.norm(X-X_line, axis=1)
+        euclidian = np.linalg.norm(X - X_line, axis=1)
         return np.sum(euclidian)
 
     def scores(self, model, X_train=None, y_train=None, allowed_layers=[]):
@@ -353,14 +360,14 @@ class template_SimilarityMetric():
         else:  # It uses the full training data
             sub_sampling = np.arange(X_train.shape[0])
 
-        F = Model(model.input, model.get_layer(index=-2).output)#Often, it is the Flatten layer
+        F = Model(model.input, model.get_layer(index=-2).output)  # Often, it is the Flatten layer
         F_features = F.predict(X_train[sub_sampling], verbose=0)
 
         F_line = Model(model.input, model.get_layer(index=-2).output)
         for layer_idx in allowed_layers:
             scores = []
 
-            layer = F_line.get_layer(index = layer_idx)
+            layer = F_line.get_layer(index=layer_idx)
             n_filters = layer.filters
             for f in range(n_filters):
                 weights = layer.get_weights()
@@ -374,16 +381,16 @@ class template_SimilarityMetric():
 
                 layer.set_weights(original_weights)
 
-                #A simple euclidian distance-based metric
+                # A simple euclidian distance-based metric
                 score = self.metric(F_features, F_line_features)
-                scores.append(1-score)#Depending on the metric it could be score only
+                scores.append(1 - score)  # Depending on the metric it could be score only
 
             output.append((layer_idx, scores))
 
         return output
 
-def criteria(method='random'):
 
+def criteria(method='random'):
     if method == 'random':
         return random()
 

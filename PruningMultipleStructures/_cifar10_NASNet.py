@@ -1,14 +1,15 @@
-import numpy as np
-from sklearn.metrics._classification import accuracy_score
-from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.utils import gen_batches
-import sys
-import keras
-import tensorflow
-import h5py
-import random
 import string
+import sys
+
+import keras
+import numpy as np
+from keras import backend as K
 from keras.layers import *
+from keras.models import Model
+from keras.regularizers import l2
+from keras.utils.data_utils import get_file
+from sklearn.metrics._classification import accuracy_score
+from tensorflow.python.data import Dataset
 
 sys.path.insert(0, '../utils')
 sys.path.insert(0, '../architectures')
@@ -52,18 +53,6 @@ Based on the following implementations:
  - [TensorNets implementation]
    (https://github.com/taehoonlee/tensornets/blob/master/tensornets/nasnets.py)
 """
-
-from keras.models import Model
-from keras.regularizers import l2
-from keras.utils.data_utils import get_file
-from keras.applications.imagenet_utils import decode_predictions
-from keras import backend as K
-
-import sys
-
-sys.path.insert(0, '../utils')
-
-import custom_functions as func
 
 _BN_DECAY = 0.9997
 _BN_EPSILON = 1e-3
