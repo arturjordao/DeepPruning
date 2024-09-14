@@ -1,13 +1,9 @@
-import numpy as np
-from numpy.linalg import matrix_rank
 import copy
-import time
+
+import numpy as np
 from keras.layers import *
 from keras.models import Model
-from sklearn.utils import gen_batches
-from sklearn.cross_decomposition import PLSRegression
-from sklearn.utils.extmath import softmax
-import gc
+from numpy.linalg import matrix_rank
 
 
 class CKA:
@@ -20,7 +16,7 @@ class CKA:
     def _debiased_dot_product_similarity_helper(xty, sum_squared_rows_x, sum_squared_rows_y, squared_norm_x,
                                                 squared_norm_y, n):
         return (xty - n / (n - 2.) * sum_squared_rows_x.dot(sum_squared_rows_y) + squared_norm_x * squared_norm_y / (
-                    (n - 1) * (n - 2)))
+                (n - 1) * (n - 2)))
 
     def feature_space_linear_cka(self, features_x, features_y, debiased=False):
         features_x = features_x - np.mean(features_x, 0, keepdims=True)
