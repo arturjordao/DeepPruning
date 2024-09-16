@@ -1,7 +1,8 @@
-import tensorflow as tf
 import sys
-from keras.models import Model
+
+import tensorflow as tf
 from keras import layers
+from keras.models import Model
 
 sys.path.insert(0, '../utils')
 from custom_classes import Patches, PatchEncoder

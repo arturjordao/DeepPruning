@@ -2,7 +2,6 @@
 from keras import backend
 from keras import layers
 from keras import models
-import keras.utils as keras_utils
 from keras.layers import *
 
 
@@ -100,7 +99,7 @@ if __name__ == '__main__':
     sys.path.insert(0, '../utils')
 
     import custom_functions as func
-    from tensorflow.keras.applications.resnet50 import preprocess_input
+    from keras.applications.resnet import preprocess_input
     from sklearn.utils import gen_batches
     from sklearn.metrics import accuracy_score
 

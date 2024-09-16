@@ -1,13 +1,10 @@
-import numpy as np
-from sklearn.utils import gen_batches
 import keras
-from keras.layers.pooling import *
+import numpy as np
 from keras.layers import *
 from keras.layers import Input
-from keras.models import Model
-import gc
-import sys
+
 import architecture_ResNetBN as arch
+
 
 def blocks_to_prune(model):
     allowed_layers = []
@@ -28,6 +25,7 @@ def blocks_to_prune(model):
     allowed_layers.append(all_add[-1])
     return allowed_layers
 
+
 def add_to_downsampling(model):
     layers = []
     all_add = []
@@ -45,16 +43,18 @@ def add_to_downsampling(model):
 
     return layers
 
+
 def idx_score_block(blocks, layers):
-    #Associates the scores's index with the ResNet block
+    # Associates the scores's index with the ResNet block
     output = {}
     idx = 0
     for i in range(0, len(blocks)):
-        for layer_idx in range(idx, idx+blocks[i]-1):
+        for layer_idx in range(idx, idx + blocks[i] - 1):
             output[layers[layer_idx]] = i
             idx = idx + 1
 
     return output
+
 
 def new_blocks(blocks, scores, allowed_layers, p=0.1):
     num_blocks = blocks
@@ -67,14 +67,14 @@ def new_blocks(blocks, scores, allowed_layers, p=0.1):
     score_block = idx_score_block(blocks, allowed_layers)
     mask = np.ones(len(allowed_layers))
 
-    #It forces to remove 'num_remove' layers
+    # It forces to remove 'num_remove' layers
     i = num_remove
     while i > 0 and not np.all(np.isinf(scores)):
         min_score = np.argmin(scores)
-        block_idx = allowed_layers[min_score]#Get the index of the layer associated with the min vip
+        block_idx = allowed_layers[min_score]  # Get the index of the layer associated with the min vip
         block_idx = score_block[block_idx]
 
-        if num_blocks[block_idx]-1 > 1:
+        if num_blocks[block_idx] - 1 > 1:
             mask[min_score] = 0
             num_blocks[block_idx] = num_blocks[block_idx] - 1
 
@@ -84,21 +84,21 @@ def new_blocks(blocks, scores, allowed_layers, p=0.1):
 
     return num_blocks, mask
 
+
 def transfer_weightsBN(model, new_model, mask):
     add_model = blocks_to_prune(model)
     add_new_model = blocks_to_prune(new_model)
 
-    #Add the same weights until finding the first Add layer
+    # Add the same weights until finding the first Add layer
     for idx in range(0, len(model.layers)):
         w = model.get_layer(index=idx).get_weights()
         new_model.get_layer(index=idx).set_weights(w)
-
 
         if isinstance(model.get_layer(index=idx), Add):
             break
 
     # These are the layers where the weights must to be transfered
-    add_model = np.array(add_model)[mask==1]
+    add_model = np.array(add_model)[mask == 1]
     add_model = list(add_model)
     end = len(add_new_model)
 
@@ -126,22 +126,24 @@ def transfer_weightsBN(model, new_model, mask):
             w = model.get_layer(index=idx_model[transfer_idx]).get_weights()
             new_model.get_layer(index=idx_new_model[transfer_idx]).set_weights(w)
 
-    #This is the dense layer
+    # This is the dense layer
     w = model.get_layer(index=-1).get_weights()
     new_model.get_layer(index=-1).set_weights(w)
 
     return new_model
 
+
 def count_res_blocks(model):
-    #Returns the last Add of each block
+    # Returns the last Add of each block
     res_blocks = {}
 
     for layer in model.layers:
         if isinstance(layer, keras.layers.Add):
-            dim = layer.output_shape[1]#1 and 2 are the spatial dimensions
+            dim = layer.output_shape[1]  # 1 and 2 are the spatial dimensions
             res_blocks[dim] = res_blocks.get(dim, 0) + 1
 
     return list(res_blocks.values())
+
 
 def rebuild_network(model, scores, p_layer):
     num_classes = model.output_shape[-1]

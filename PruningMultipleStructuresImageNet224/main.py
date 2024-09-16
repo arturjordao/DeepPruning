@@ -1,16 +1,18 @@
-import numpy as np
-from sklearn.metrics import accuracy_score, top_k_accuracy_score
-from sklearn.utils import gen_batches
-import sys
-import keras
-import tensorflow as tf
-from tensorflow.data import Dataset
-import h5py
-from tensorflow.keras.applications.resnet50 import preprocess_input
 import argparse
+import sys
 
+import h5py
+import keras
+import numpy as np
+from tensorflow.python.data import Dataset
+from keras.applications.resnet import preprocess_input
+from sklearn.metrics import top_k_accuracy_score
+from sklearn.utils import gen_batches
+
+import rebuild_filters as rf
 import rebuild_layers as rl
 from pruning_criteria import criteria_layer as cl
+from pruning_criteria import criteria_filter as cf
 
 sys.path.insert(0, '../utils')
 
@@ -22,7 +24,6 @@ import architecture_ResNetBN as arch
 def statistics(model):
     n_params = model.count_params()
     n_filters = func.count_filters(model)
-    filter_layer = func.count_filters_layer(model)
     flops, _ = func.compute_flops(model)
     blocks = rl.count_res_blocks(model)
 
@@ -44,7 +45,7 @@ def prediction(model, X_test, y_test, num_classes=None):
 
     labels = None
     if num_classes is not None:
-        labels = np.arrange(num_classes)
+        labels = np.arange(num_classes)
 
     top1 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=1, labels=labels)
     top5 = top_k_accuracy_score(np.argmax(y_test, axis=1), y_pred, k=5, labels=labels)
@@ -52,9 +53,15 @@ def prediction(model, X_test, y_test, num_classes=None):
     print('Top1 [{:.4f}] Top5 [{:.4f}] Top10 [{:.4f}]'.format(top1, top5, top10), flush=True)
 
 
-def finetuning(model, X_train, y_train, X_test, y_test):
+def finetuning(model, X_train, y_train, X_test, y_test, criterion_filter, p_filter):
     lr = 0.001
     schedule = [(2, 1e-4), (4, 1e-5)]
+
+    if criterion_filter is not None and p_filter is not None:
+        # It checks if the code saves the model correctly
+        func.save_model(
+            'Criterion[{}]_Filters{}_P[{}]_Epoch{}'.format(criterion_filter, func.count_filters(model), p_filter, 0),
+            model)
 
     lr_scheduler = custom_callbacks.LearningRateScheduler(init_lr=lr, schedule=schedule)
     callbacks = [lr_scheduler]
@@ -63,12 +70,10 @@ def finetuning(model, X_train, y_train, X_test, y_test):
     model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
     for ep in range(0, 5):
-
         for batch in gen_batches(X_train.shape[0], 1024):
             samples = func.data_augmentation(X_train[batch].astype(float), padding=28)
             samples = preprocess_input(samples)
 
-            # with tf.device("CPU"):
             X_tmp = Dataset.from_tensor_slices((samples, y_train[batch])).shuffle(4 * 64).batch(64)
 
             model.fit(X_tmp,
@@ -78,9 +83,44 @@ def finetuning(model, X_train, y_train, X_test, y_test):
         if ep % 3:
             prediction(model, X_test, y_test)
 
-        func.save_model('Criterion[{}]' + '_Blocks{}_P[{}]_Epoch{}'.format(criterion_layer, blocks, p_layer, ep), model)
+        if criterion_filter is not None and p_filter is not None:
+            func.save_model(
+                'Criterion[{}]_Filters[{}]_P[{}]_Epoch{}'.format(criterion_filter, func.count_filters(model), p_filter,
+                                                                 ep),
+                model)
+        else:
+            func.save_model('Criterion[{}]' + '_Blocks{}_P[{}]_Epoch{}'.format(criterion_layer, blocks, p_layer, ep),
+                            model)
 
     return model
+
+
+def prune_filters(model):
+    while True:
+        allowed_layers_filters = rf.layer_to_prune_filters(model)
+        filter_method = cf.criteria(criterion_filter)
+        scores = filter_method.scores(model, X_train, y_train, allowed_layers_filters)
+
+        model = rf.rebuild_network(model, scores, p_filter)
+
+        # model = finetuning(model, X_train, y_train, X_test, y_test, criterion_filter, p_filter)
+        statistics(model)
+        prediction(model, X_test, y_test, num_classes)
+        # func.save_model('Criterion[{}]_Filters[{}]_P[{}]'.format(criterion_filter, func.count_filters(model), p_filter), model)
+
+
+def prune_layers(model):
+    while rl.count_res_blocks(model) != [2, 2, 2, 2]:
+        allowed_layers = rl.blocks_to_prune(model)
+        layer_method = cl.criteria(criterion_layer)
+        scores = layer_method.scores(model, X_train, y_train, allowed_layers)
+
+        model = rl.rebuild_network(model, scores, p_layer)
+
+        # model = finetuning(model, X_train, y_train, X_test, y_test)
+        statistics(model)
+        prediction(model, X_test, y_test, num_classes)
+        # func.save_model('Criterion[{}]' + '_Blocks{}_P[{}]'.format(criterion_layer, blocks, p_layer), model)
 
 
 if __name__ == '__main__':
@@ -88,23 +128,42 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--architecture', type=str, default='ResNet50')
+    parser.add_argument('--criterion_filter', type=str, default='L1')
     parser.add_argument('--criterion_layer', type=str, default='random')
     parser.add_argument('--p_layer', type=float, default=1)
-    debug = False
+    parser.add_argument('--p_filter', type=float, default=0.50)
+    parser.add_argument('--pruning_type', type=str, default='Layer')  # Layer or Filter
+    debug = True
 
     args = parser.parse_args()
     architecture_name = args.architecture
+
+    p_filter = args.p_filter
+    criterion_filter = args.criterion_filter
     p_layer = args.p_layer
     criterion_layer = args.criterion_layer
     # scores = []#Put the precomputed scores here
     cl.preprocess_input = preprocess_input
 
-    print('Architecture [{}] Criterion[{}] P[{}]'.format(architecture_name, criterion_layer, p_layer), flush=True)
+    rf.architecture_name = architecture_name
+    rl.architecture_name = architecture_name
 
-    if debug == False:
+    pruning_type = args.pruning_type
+
+    if pruning_type == 'Filter':
+        print(f'Architecture [{architecture_name}] Criterion[{criterion_filter}]  Filters P[{p_filter}]', flush=True)
+    elif pruning_type == 'Layer':
+        print(f'Architecture [{architecture_name}] Criterion[{criterion_layer}] Layers P[{p_layer}]', flush=True)
+    else:
+        print(f'Invalid Pruning Type: {pruning_type}')
+
+    # don't have those files
+    # model = func.load_model('Criterion[CKA]_Blocks[2, 2, 2, 2]_P[1]_Epoch5',
+    #                         'Criterion[CKA]_Blocks[2, 2, 2, 2]_P[1]_Epoch5')
+
+    if not debug:
         model = func.load_model(architecture_name, architecture_name)
         num_classes = None
-        # absolute path :(
         tmp = h5py.File('E:/ImageNet/imageNet_images.h5', 'r')
         X_train, y_train = tmp['X_train'], tmp['y_train']
         X_test, y_test = tmp['X_test'], tmp['y_test']
@@ -120,21 +179,14 @@ if __name__ == '__main__':
         y_train = np.eye(1000)[np.random.randint(0, 1000, n_samples)]
         y_test = np.eye(1000)[np.random.randint(0, 1000, n_samples)]
 
-        input_shape = (224, 224, 3)
+        input_shape = (resolution, resolution, 3)
         blocks = [3, 4, 6, 3]
 
-        model = arch.resnet(
-            input_shape=input_shape,
-            blocks=blocks)
+        model = arch.resnet(input_shape=input_shape, blocks=blocks)  # Scale-wise
 
-    while rl.count_res_blocks(model) != [2, 2, 2, 2]:
-        allowed_layers = rl.blocks_to_prune(model)
-        layer_method = cl.criteria(criterion_layer)
-        scores = layer_method.scores(model, X_train, y_train, allowed_layers)
+    # prediction(model, X_test, y_test)
 
-        model = rl.rebuild_network(model, scores, p_layer)
-
-        # model = finetuning(model, X_train, y_train, X_test, y_test)
-        statistics(model)
-        prediction(model, X_test, y_test, num_classes)
-        # func.save_model('Criterion[{}]' + '_Blocks{}_P[{}]'.format(criterion_layer, blocks, p_layer), model)
+    if pruning_type == 'Filter':
+        prune_filters(model)
+    elif pruning_type == 'Layer':
+        prune_layers(model)

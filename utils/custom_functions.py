@@ -1,5 +1,6 @@
-import numpy as np
 import random
+
+import numpy as np
 
 
 def load_transformer_model(architecture_file='', weights_file=''):
@@ -111,11 +112,10 @@ def generate_data_augmentation(x_train):
 
 
 def cifar_resnet_data(debug=True, validation_set=False):
-    import keras
     import tensorflow as tf
     print('Debuging Mode') if debug is True else print('Real Mode')
 
-    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar10.load_data()
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
     x_train = x_train.astype('float32') / 255
     x_test = x_test.astype('float32') / 255

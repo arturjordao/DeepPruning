@@ -1,17 +1,17 @@
-import numpy as np
-from sklearn.metrics import accuracy_score
-import sys
 import argparse
-import random
-import tensorflow as tf
-import keras
-from keras import layers
-from tensorflow.data import Dataset
 import os
+import random
+import sys
+
+import keras
+import numpy as np
+import tensorflow as tf
+from keras import layers
+from sklearn.metrics import accuracy_score
+from tensorflow.python.data import Dataset
 
 import rebuild_heads as rh
 import rebuild_layers as rl
-
 import template_architectures
 from pruning_criteria import criteria_head as ch
 from pruning_criteria import criteria_layer as cl
